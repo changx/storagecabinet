@@ -1,6 +1,6 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as FileSystem from 'expo-file-system/legacy';
-import { StorageSpace, StorageSpaceMeta, StorageLocation, StorageItem } from '../types';
+import { StorageSpace, StorageSpaceMeta, StorageLocation, StorageItem, SearchResult } from '../types';
 
 const STORAGE_SPACES_KEY = 'storage_spaces';
 
@@ -114,6 +114,33 @@ export class StorageManager {
     }
   }
 
+  async deleteLocationFromSpace(spaceId: string, locationId: string): Promise<void> {
+    try {
+      const spaces = await this.getStorageSpaces();
+      const space = spaces.find(s => s.id === spaceId);
+      
+      if (space) {
+        const location = space.locations.find(l => l.id === locationId);
+        
+        // 删除位置中所有物品的图片文件
+        if (location) {
+          for (const item of location.items) {
+            if (item.photoPath) {
+              await this.deleteImageFile(item.photoPath);
+            }
+          }
+        }
+        
+        // 从空间中移除该位置
+        space.locations = space.locations.filter(l => l.id !== locationId);
+        await this.saveStorageSpace(space);
+      }
+    } catch (error) {
+      console.error('Error deleting location from space:', error);
+      throw error;
+    }
+  }
+
   async addItemToLocation(spaceId: string, locationId: string, item: StorageItem): Promise<void> {
     try {
       const spaces = await this.getStorageSpaces();
@@ -186,6 +213,37 @@ export class StorageManager {
     } catch (error) {
       console.error('Error saving image:', error);
       throw error;
+    }
+  }
+
+  async searchItems(query: string): Promise<SearchResult[]> {
+    try {
+      if (!query || query.trim().length === 0) {
+        return [];
+      }
+
+      const spaces = await this.getStorageSpaces();
+      const results: SearchResult[] = [];
+      const normalizedQuery = query.toLowerCase().trim();
+
+      for (const space of spaces) {
+        for (const location of space.locations) {
+          for (const item of location.items) {
+            if (item.description.toLowerCase().includes(normalizedQuery)) {
+              results.push({
+                item,
+                space,
+                location
+              });
+            }
+          }
+        }
+      }
+
+      return results;
+    } catch (error) {
+      console.error('Error searching items:', error);
+      return [];
     }
   }
 

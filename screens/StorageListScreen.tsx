@@ -10,10 +10,12 @@ import {
   Image,
   ActionSheetIOS,
   Platform,
+  TextInput,
+  Modal,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useFocusEffect } from '@react-navigation/native';
-import { StorageSpace } from '../types';
+import { StorageSpace, SearchResult } from '../types';
 import { StorageManager } from '../utils/storage';
 
 const { width } = Dimensions.get('window');
@@ -25,6 +27,10 @@ interface Props {
 export default function StorageListScreen({ navigation }: Props) {
   const [storageSpaces, setStorageSpaces] = useState<StorageSpace[]>([]);
   const [loading, setLoading] = useState(true);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [searchResults, setSearchResults] = useState<SearchResult[]>([]);
+  const [isSearchModalVisible, setIsSearchModalVisible] = useState(false);
+  const [searchLoading, setSearchLoading] = useState(false);
 
   const loadStorageSpaces = async () => {
     try {
@@ -43,6 +49,63 @@ export default function StorageListScreen({ navigation }: Props) {
     useCallback(() => {
       loadStorageSpaces();
     }, [])
+  );
+
+  const handleSearch = async (query: string) => {
+    setSearchQuery(query);
+    if (query.trim().length === 0) {
+      setSearchResults([]);
+      return;
+    }
+
+    try {
+      setSearchLoading(true);
+      const results = await StorageManager.getInstance().searchItems(query);
+      setSearchResults(results);
+    } catch (error) {
+      console.error('Search error:', error);
+    } finally {
+      setSearchLoading(false);
+    }
+  };
+
+  const clearSearch = () => {
+    setSearchQuery('');
+    setSearchResults([]);
+    setIsSearchModalVisible(false);
+  };
+
+  const navigateToLocationDetail = (result: SearchResult) => {
+    setIsSearchModalVisible(false);
+    navigation.navigate('LocationDetail', {
+      spaceId: result.space.id,
+      locationId: result.location.id,
+      spaceTitle: result.space.title
+    });
+  };
+
+  const renderSearchResult = ({ item }: { item: SearchResult }) => (
+    <TouchableOpacity
+      style={styles.searchResultItem}
+      onPress={() => navigateToLocationDetail(item)}
+    >
+      <View style={styles.searchImageContainer}>
+        <Image
+          source={{ uri: item.item.photoPath }}
+          style={styles.searchThumbnail}
+          resizeMode="cover"
+        />
+      </View>
+      <View style={styles.searchItemInfo}>
+        <Text style={styles.searchItemTitle}>{item.item.description}</Text>
+        <Text style={styles.searchItemLocation}>
+          位置: {item.space.title}
+        </Text>
+        <Text style={styles.searchItemTime}>
+          {new Date(item.item.createdAt).toLocaleDateString()}
+        </Text>
+      </View>
+    </TouchableOpacity>
   );
 
   const renderStorageSpace = ({ item }: { item: StorageSpace }) => (
@@ -161,9 +224,17 @@ export default function StorageListScreen({ navigation }: Props) {
     <SafeAreaView style={styles.container}>
       <View style={styles.header}>
         <Text style={styles.headerTitle}>储物空间</Text>
-        <TouchableOpacity style={styles.addButton} onPress={handleAddSpace}>
-          <Text style={styles.addButtonText}>+</Text>
-        </TouchableOpacity>
+        <View style={styles.headerButtons}>
+          <TouchableOpacity 
+            style={styles.searchButton} 
+            onPress={() => setIsSearchModalVisible(true)}
+          >
+            <Text style={styles.searchButtonText}>🔍</Text>
+          </TouchableOpacity>
+          <TouchableOpacity style={styles.addButton} onPress={handleAddSpace}>
+            <Text style={styles.addButtonText}>+</Text>
+          </TouchableOpacity>
+        </View>
       </View>
       
       {storageSpaces.length === 0 ? (
@@ -182,6 +253,53 @@ export default function StorageListScreen({ navigation }: Props) {
           numColumns={1}
         />
       )}
+
+      <Modal
+        visible={isSearchModalVisible}
+        animationType="slide"
+        presentationStyle="pageSheet"
+        onRequestClose={clearSearch}
+      >
+        <SafeAreaView style={styles.searchModalContainer}>
+          <View style={styles.searchHeader}>
+            <View style={styles.searchInputContainer}>
+              <TextInput
+                style={styles.searchInput}
+                placeholder="搜索物品名称..."
+                placeholderTextColor="#999"
+                value={searchQuery}
+                onChangeText={handleSearch}
+                autoFocus={true}
+                clearButtonMode="while-editing"
+              />
+            </View>
+            <TouchableOpacity style={styles.cancelButton} onPress={clearSearch}>
+              <Text style={styles.cancelButtonText}>取消</Text>
+            </TouchableOpacity>
+          </View>
+
+          {searchLoading ? (
+            <View style={styles.searchLoadingContainer}>
+              <Text>搜索中...</Text>
+            </View>
+          ) : searchQuery.trim().length === 0 ? (
+            <View style={styles.searchEmptyContainer}>
+              <Text style={styles.searchEmptyText}>输入物品名称开始搜索</Text>
+            </View>
+          ) : searchResults.length === 0 ? (
+            <View style={styles.searchEmptyContainer}>
+              <Text style={styles.searchEmptyText}>未找到相关物品</Text>
+            </View>
+          ) : (
+            <FlatList
+              data={searchResults}
+              renderItem={renderSearchResult}
+              keyExtractor={(item, index) => `${item.item.id}_${index}`}
+              contentContainerStyle={styles.searchResultsList}
+            />
+          )}
+        </SafeAreaView>
+      </Modal>
     </SafeAreaView>
   );
 }
@@ -200,6 +318,22 @@ const styles = StyleSheet.create({
     backgroundColor: '#fff',
     borderBottomWidth: 1,
     borderBottomColor: '#e0e0e0',
+  },
+  headerButtons: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+  },
+  searchButton: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: '#f0f0f0',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  searchButtonText: {
+    fontSize: 20,
   },
   headerTitle: {
     fontSize: 24,
@@ -297,5 +431,99 @@ const styles = StyleSheet.create({
     color: 'white',
     fontSize: 16,
     fontWeight: 'bold',
+  },
+  searchModalContainer: {
+    flex: 1,
+    backgroundColor: '#f5f5f5',
+  },
+  searchHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 20,
+    paddingVertical: 15,
+    backgroundColor: '#fff',
+    borderBottomWidth: 1,
+    borderBottomColor: '#e0e0e0',
+    gap: 10,
+  },
+  searchInputContainer: {
+    flex: 1,
+    backgroundColor: '#f0f0f0',
+    borderRadius: 10,
+    paddingHorizontal: 15,
+    height: 40,
+    justifyContent: 'center',
+  },
+  searchInput: {
+    fontSize: 16,
+    color: '#333',
+  },
+  cancelButton: {
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+  },
+  cancelButtonText: {
+    color: '#007AFF',
+    fontSize: 16,
+  },
+  searchLoadingContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  searchEmptyContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingHorizontal: 40,
+  },
+  searchEmptyText: {
+    fontSize: 16,
+    color: '#666',
+    textAlign: 'center',
+  },
+  searchResultsList: {
+    padding: 15,
+  },
+  searchResultItem: {
+    backgroundColor: 'white',
+    borderRadius: 12,
+    marginBottom: 12,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.05,
+    shadowRadius: 4,
+    elevation: 2,
+    overflow: 'hidden',
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  searchImageContainer: {
+    width: 80,
+    height: 80,
+    backgroundColor: '#f0f0f0',
+  },
+  searchThumbnail: {
+    width: '100%',
+    height: '100%',
+  },
+  searchItemInfo: {
+    flex: 1,
+    padding: 15,
+  },
+  searchItemTitle: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#333',
+    marginBottom: 4,
+  },
+  searchItemLocation: {
+    fontSize: 14,
+    color: '#666',
+    marginBottom: 2,
+  },
+  searchItemTime: {
+    fontSize: 12,
+    color: '#999',
   },
 });

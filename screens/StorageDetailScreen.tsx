@@ -164,13 +164,52 @@ export default function StorageDetailScreen({ navigation, route }: Props) {
     });
 
   const handleMarkerPress = (marker: LocationMarker) => {
-    if (isEditMode) return; // 编辑模式下不响应标记点击
+    if (isEditMode) {
+      // 编辑模式下点击标记显示删除确认对话框
+      handleDeleteLocation(marker);
+      return;
+    }
     
     navigation.navigate('LocationDetail', {
       spaceId: space.id,
       locationId: marker.id,
       spaceTitle: space.title,
     });
+  };
+
+  // 删除储物位置
+  const handleDeleteLocation = (marker: LocationMarker) => {
+    Alert.alert(
+      '删除储物位置',
+      `确定要删除这个储物位置吗？\n\n删除后将无法恢复，位置中的所有物品信息都将丢失。`,
+      [
+        {
+          text: '取消',
+          style: 'cancel',
+        },
+        {
+          text: '删除',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              const storageManager = StorageManager.getInstance();
+              await storageManager.deleteLocationFromSpace(space.id, marker.id);
+              
+              // 更新本地标记状态
+              setMarkers(prev => prev.filter(m => m.id !== marker.id));
+              
+              // 触觉反馈
+              Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+              
+              Alert.alert('成功', '储物位置已删除');
+            } catch (error) {
+              console.error('Error deleting location:', error);
+              Alert.alert('错误', '删除储物位置失败，请稍后重试');
+            }
+          },
+        },
+      ]
+    );
   };
 
   // 位置标记组件
@@ -186,12 +225,11 @@ export default function StorageDetailScreen({ navigation, route }: Props) {
           {
             left: markerX + imageLayout.x - 20,
             top: markerY + imageLayout.y - 20,
-            opacity: isEditMode ? 0.5 : 1.0,
+            opacity: isEditMode ? 0.8 : 1.0,
           },
         ]}
         onPress={() => handleMarkerPress(marker)}
-        disabled={isEditMode}
-        activeOpacity={isEditMode ? 1 : 0.7}
+        activeOpacity={0.7}
       >
         <View style={styles.markerCircle}>
           <Text style={styles.markerText}>{marker.itemCount}</Text>
@@ -278,7 +316,7 @@ export default function StorageDetailScreen({ navigation, route }: Props) {
         {/* 编辑模式提示 */}
         {isEditMode && (
           <View style={styles.editHint}>
-            <Text style={styles.editHintText}>💡 滑动选择新的储物区域</Text>
+            <Text style={styles.editHintText}>💡 滑动选择新的储物区域，点击已有标记可删除位置</Text>
           </View>
         )}
       </SafeAreaView>

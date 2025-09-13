@@ -30,3 +30,9 @@ export interface StorageSpaceMeta {
   createdAt: string;
   updatedAt: string;
 }
+
+export interface SearchResult {
+  item: StorageItem;
+  space: StorageSpace;
+  location: StorageLocation;
+}
