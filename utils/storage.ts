@@ -1,0 +1,149 @@
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import * as FileSystem from 'expo-file-system/legacy';
+import { StorageSpace, StorageSpaceMeta, StorageLocation, StorageItem } from '../types';
+
+const STORAGE_SPACES_KEY = 'storage_spaces';
+
+export class StorageManager {
+  private static instance: StorageManager;
+  
+  static getInstance(): StorageManager {
+    if (!StorageManager.instance) {
+      StorageManager.instance = new StorageManager();
+    }
+    return StorageManager.instance;
+  }
+
+  async getStorageSpaces(): Promise<StorageSpace[]> {
+    try {
+      const spaces = await AsyncStorage.getItem(STORAGE_SPACES_KEY);
+      return spaces ? JSON.parse(spaces) : [];
+    } catch (error) {
+      console.error('Error getting storage spaces:', error);
+      return [];
+    }
+  }
+
+  async saveStorageSpace(space: StorageSpace): Promise<void> {
+    try {
+      const spaces = await this.getStorageSpaces();
+      const existingIndex = spaces.findIndex(s => s.id === space.id);
+      
+      if (existingIndex >= 0) {
+        spaces[existingIndex] = space;
+      } else {
+        spaces.push(space);
+      }
+      
+      await AsyncStorage.setItem(STORAGE_SPACES_KEY, JSON.stringify(spaces));
+    } catch (error) {
+      console.error('Error saving storage space:', error);
+      throw error;
+    }
+  }
+
+  async deleteStorageSpace(spaceId: string): Promise<void> {
+    try {
+      const spaces = await this.getStorageSpaces();
+      const filteredSpaces = spaces.filter(s => s.id !== spaceId);
+      await AsyncStorage.setItem(STORAGE_SPACES_KEY, JSON.stringify(filteredSpaces));
+    } catch (error) {
+      console.error('Error deleting storage space:', error);
+      throw error;
+    }
+  }
+
+  async addLocationToSpace(spaceId: string, location: StorageLocation): Promise<void> {
+    try {
+      const spaces = await this.getStorageSpaces();
+      const space = spaces.find(s => s.id === spaceId);
+      
+      if (space) {
+        space.locations.push(location);
+        await this.saveStorageSpace(space);
+      }
+    } catch (error) {
+      console.error('Error adding location to space:', error);
+      throw error;
+    }
+  }
+
+  async addItemToLocation(spaceId: string, locationId: string, item: StorageItem): Promise<void> {
+    try {
+      const spaces = await this.getStorageSpaces();
+      const space = spaces.find(s => s.id === spaceId);
+      
+      if (space) {
+        const location = space.locations.find(l => l.id === locationId);
+        if (location) {
+          location.items.push(item);
+          await this.saveStorageSpace(space);
+        }
+      }
+    } catch (error) {
+      console.error('Error adding item to location:', error);
+      throw error;
+    }
+  }
+
+  async updateItem(spaceId: string, locationId: string, itemId: string, item: StorageItem): Promise<void> {
+    try {
+      const spaces = await this.getStorageSpaces();
+      const space = spaces.find(s => s.id === spaceId);
+      
+      if (space) {
+        const location = space.locations.find(l => l.id === locationId);
+        if (location) {
+          const itemIndex = location.items.findIndex(i => i.id === itemId);
+          if (itemIndex >= 0) {
+            location.items[itemIndex] = item;
+            await this.saveStorageSpace(space);
+          }
+        }
+      }
+    } catch (error) {
+      console.error('Error updating item:', error);
+      throw error;
+    }
+  }
+
+  async deleteItem(spaceId: string, locationId: string, itemId: string): Promise<void> {
+    try {
+      const spaces = await this.getStorageSpaces();
+      const space = spaces.find(s => s.id === spaceId);
+      
+      if (space) {
+        const location = space.locations.find(l => l.id === locationId);
+        if (location) {
+          location.items = location.items.filter(i => i.id !== itemId);
+          await this.saveStorageSpace(space);
+        }
+      }
+    } catch (error) {
+      console.error('Error deleting item:', error);
+      throw error;
+    }
+  }
+
+  async saveImageToLocal(uri: string, fileName: string): Promise<string> {
+    try {
+      const directory = FileSystem.documentDirectory + 'storage_images/';
+      await FileSystem.makeDirectoryAsync(directory, { intermediates: true });
+      
+      const newPath = directory + fileName;
+      await FileSystem.copyAsync({
+        from: uri,
+        to: newPath
+      });
+      
+      return newPath;
+    } catch (error) {
+      console.error('Error saving image:', error);
+      throw error;
+    }
+  }
+
+  generateId(): string {
+    return Date.now().toString() + Math.random().toString(36).substr(2, 9);
+  }
+}
