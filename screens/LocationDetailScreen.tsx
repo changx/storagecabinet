@@ -11,17 +11,12 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useFocusEffect } from '@react-navigation/native';
 import { StorageItem, StorageSpace } from '../types';
+import { LocationDetailScreenNavigationProp, LocationDetailScreenRouteProp } from '../types/navigation';
 import { StorageManager } from '../utils/storage';
 
 interface Props {
-  navigation: any;
-  route: {
-    params: {
-      spaceId: string;
-      locationId: string;
-      spaceTitle: string;
-    };
-  };
+  navigation: LocationDetailScreenNavigationProp;
+  route: LocationDetailScreenRouteProp;
 }
 
 export default function LocationDetailScreen({ navigation, route }: Props) {

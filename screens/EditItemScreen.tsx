@@ -15,17 +15,12 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import * as ImagePicker from 'expo-image-picker';
 import * as FileSystem from 'expo-file-system/legacy';
 import { StorageItem } from '../types';
+import { EditItemScreenNavigationProp, EditItemScreenRouteProp } from '../types/navigation';
 import { StorageManager } from '../utils/storage';
 
 interface Props {
-  navigation: any;
-  route: {
-    params: {
-      spaceId: string;
-      locationId: string;
-      item: StorageItem | null;
-    };
-  };
+  navigation: EditItemScreenNavigationProp;
+  route: EditItemScreenRouteProp;
 }
 
 export default function EditItemScreen({ navigation, route }: Props) {

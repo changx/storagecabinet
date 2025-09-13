@@ -8,8 +8,9 @@ import AddStorageSpaceScreen from '../screens/AddStorageSpaceScreen';
 import StorageDetailScreen from '../screens/StorageDetailScreen';
 import LocationDetailScreen from '../screens/LocationDetailScreen';
 import EditItemScreen from '../screens/EditItemScreen';
+import { RootStackParamList } from '../types/navigation';
 
-const Stack = createStackNavigator();
+const Stack = createStackNavigator<RootStackParamList>();
 
 export default function AppNavigator() {
   return (
