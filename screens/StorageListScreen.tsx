@@ -8,6 +8,8 @@ import {
   Alert,
   Dimensions,
   Image,
+  ActionSheetIOS,
+  Platform,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useFocusEffect } from '@react-navigation/native';
@@ -47,6 +49,7 @@ export default function StorageListScreen({ navigation }: Props) {
     <TouchableOpacity
       style={styles.spaceItem}
       onPress={() => navigation.navigate('StorageDetail', { space: item })}
+      onLongPress={() => showSpaceOptions(item)}
     >
       <View style={styles.imageContainer}>
         <Image
@@ -54,6 +57,12 @@ export default function StorageListScreen({ navigation }: Props) {
           style={styles.thumbnail}
           resizeMode="cover"
         />
+        <TouchableOpacity 
+          style={styles.optionsButton}
+          onPress={() => showSpaceOptions(item)}
+        >
+          <Text style={styles.optionsButtonText}>⋯</Text>
+        </TouchableOpacity>
       </View>
       <View style={styles.titleContainer}>
         <Text style={styles.title}>{item.title}</Text>
@@ -66,6 +75,76 @@ export default function StorageListScreen({ navigation }: Props) {
 
   const handleAddSpace = () => {
     navigation.navigate('AddStorageSpace');
+  };
+
+  const handleDeleteSpace = async (space: StorageSpace) => {
+    Alert.alert(
+      '删除储物空间',
+      `确定要删除"${space.title}"吗？\n\n删除后将无法恢复，所有储物位置和物品信息都将丢失。`,
+      [
+        {
+          text: '取消',
+          style: 'cancel',
+        },
+        {
+          text: '删除',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              await StorageManager.getInstance().deleteStorageSpace(space.id);
+              await loadStorageSpaces(); // 重新加载列表
+              Alert.alert('成功', `"${space.title}"已删除`);
+            } catch (error) {
+              console.error('Error deleting space:', error);
+              Alert.alert('错误', '删除储物空间失败，请稍后重试');
+            }
+          },
+        },
+      ]
+    );
+  };
+
+  const showSpaceOptions = (space: StorageSpace) => {
+    if (Platform.OS === 'ios') {
+      ActionSheetIOS.showActionSheetWithOptions(
+        {
+          options: ['取消', '查看详情', '删除'],
+          destructiveButtonIndex: 2,
+          cancelButtonIndex: 0,
+        },
+        (buttonIndex) => {
+          switch (buttonIndex) {
+            case 1:
+              navigation.navigate('StorageDetail', { space });
+              break;
+            case 2:
+              handleDeleteSpace(space);
+              break;
+          }
+        }
+      );
+    } else {
+      // Android 使用 Alert 实现选项菜单
+      Alert.alert(
+        space.title,
+        '选择操作',
+        [
+          {
+            text: '取消',
+            style: 'cancel',
+          },
+          {
+            text: '查看详情',
+            onPress: () => navigation.navigate('StorageDetail', { space }),
+          },
+          {
+            text: '删除',
+            style: 'destructive',
+            onPress: () => handleDeleteSpace(space),
+          },
+        ]
+      );
+    }
   };
 
   if (loading) {
@@ -202,5 +281,21 @@ const styles = StyleSheet.create({
   locationCount: {
     fontSize: 14,
     color: '#666',
+  },
+  optionsButton: {
+    position: 'absolute',
+    top: 10,
+    right: 10,
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: 'rgba(0, 0, 0, 0.6)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  optionsButtonText: {
+    color: 'white',
+    fontSize: 16,
+    fontWeight: 'bold',
   },
 });

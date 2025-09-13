@@ -45,11 +45,57 @@ export class StorageManager {
   async deleteStorageSpace(spaceId: string): Promise<void> {
     try {
       const spaces = await this.getStorageSpaces();
+      const spaceToDelete = spaces.find(s => s.id === spaceId);
+      
+      if (spaceToDelete) {
+        // 删除相关的图片文件
+        await this.deleteSpaceImages(spaceToDelete);
+      }
+      
+      // 从存储中移除空间数据
       const filteredSpaces = spaces.filter(s => s.id !== spaceId);
       await AsyncStorage.setItem(STORAGE_SPACES_KEY, JSON.stringify(filteredSpaces));
     } catch (error) {
       console.error('Error deleting storage space:', error);
       throw error;
+    }
+  }
+
+  private async deleteSpaceImages(space: StorageSpace): Promise<void> {
+    try {
+      // 删除储物空间的主照片
+      if (space.photoPath) {
+        await this.deleteImageFile(space.photoPath);
+      }
+      
+      // 删除缩略图
+      if (space.thumbnailPath && space.thumbnailPath !== space.photoPath) {
+        await this.deleteImageFile(space.thumbnailPath);
+      }
+      
+      // 删除所有储物位置的物品照片
+      for (const location of space.locations) {
+        for (const item of location.items) {
+          if (item.photoPath) {
+            await this.deleteImageFile(item.photoPath);
+          }
+        }
+      }
+    } catch (error) {
+      console.error('Error deleting space images:', error);
+      // 不抛出错误，因为主要的数据删除操作应该继续
+    }
+  }
+
+  private async deleteImageFile(filePath: string): Promise<void> {
+    try {
+      const fileExists = await FileSystem.getInfoAsync(filePath);
+      if (fileExists.exists) {
+        await FileSystem.deleteAsync(filePath);
+      }
+    } catch (error) {
+      console.error('Error deleting image file:', filePath, error);
+      // 不抛出错误，继续删除其他文件
     }
   }
 
