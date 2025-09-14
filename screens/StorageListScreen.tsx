@@ -31,6 +31,9 @@ export default function StorageListScreen({ navigation }: Props) {
   const [searchResults, setSearchResults] = useState<SearchResult[]>([]);
   const [isSearchModalVisible, setIsSearchModalVisible] = useState(false);
   const [searchLoading, setSearchLoading] = useState(false);
+  const [isRenameModalVisible, setIsRenameModalVisible] = useState(false);
+  const [renameInput, setRenameInput] = useState('');
+  const [selectedSpace, setSelectedSpace] = useState<StorageSpace | null>(null);
 
   const loadStorageSpaces = async () => {
     try {
@@ -128,7 +131,15 @@ export default function StorageListScreen({ navigation }: Props) {
         </TouchableOpacity>
       </View>
       <View style={styles.titleContainer}>
-        <Text style={styles.title}>{item.title}</Text>
+        <View style={styles.titleRow}>
+          <Text style={styles.title}>{item.title}</Text>
+          <TouchableOpacity
+            style={styles.editButton}
+            onPress={() => openRenameModal(item)}
+          >
+            <Text style={styles.editButtonText}>编辑</Text>
+          </TouchableOpacity>
+        </View>
         <Text style={styles.locationCount}>
           {item.locations.length} 个位置
         </Text>
@@ -138,6 +149,37 @@ export default function StorageListScreen({ navigation }: Props) {
 
   const handleAddSpace = () => {
     navigation.navigate('AddStorageSpace');
+  };
+
+  const openRenameModal = (space: StorageSpace) => {
+    setSelectedSpace(space);
+    setRenameInput(space.title);
+    setIsRenameModalVisible(true);
+  };
+
+  const closeRenameModal = () => {
+    setIsRenameModalVisible(false);
+    setSelectedSpace(null);
+    setRenameInput('');
+  };
+
+  const submitRename = async () => {
+    const newTitle = renameInput.trim();
+    if (!selectedSpace) return;
+    if (newTitle.length === 0) {
+      Alert.alert('提示', '名称不能为空');
+      return;
+    }
+    try {
+      const updated: StorageSpace = { ...selectedSpace, title: newTitle };
+      await StorageManager.getInstance().saveStorageSpace(updated);
+      closeRenameModal();
+      await loadStorageSpaces();
+      Alert.alert('成功', '名称已更新');
+    } catch (err) {
+      console.error('Rename error:', err);
+      Alert.alert('错误', '更新名称失败');
+    }
   };
 
   const handleDeleteSpace = async (space: StorageSpace) => {
@@ -300,6 +342,35 @@ export default function StorageListScreen({ navigation }: Props) {
           )}
         </SafeAreaView>
       </Modal>
+
+      <Modal
+        visible={isRenameModalVisible}
+        transparent={true}
+        animationType="fade"
+        onRequestClose={closeRenameModal}
+      >
+        <View style={styles.renameOverlay}>
+          <View style={styles.renameContainer}>
+            <Text style={styles.renameTitle}>修改名称</Text>
+            <TextInput
+              style={styles.renameInput}
+              value={renameInput}
+              onChangeText={setRenameInput}
+              placeholder="请输入新的名称"
+              placeholderTextColor="#999"
+              autoFocus
+            />
+            <View style={styles.renameActions}>
+              <TouchableOpacity style={styles.renameCancel} onPress={closeRenameModal}>
+                <Text style={styles.renameCancelText}>取消</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={styles.renameConfirm} onPress={submitRename}>
+                <Text style={styles.renameConfirmText}>保存</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
     </SafeAreaView>
   );
 }
@@ -406,11 +477,27 @@ const styles = StyleSheet.create({
   titleContainer: {
     padding: 15,
   },
+  titleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 10,
+  },
   title: {
     fontSize: 18,
     fontWeight: '600',
     color: '#333',
     marginBottom: 5,
+  },
+  editButton: {
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    backgroundColor: '#f0f0f0',
+    borderRadius: 8,
+  },
+  editButtonText: {
+    color: '#333',
+    fontSize: 14,
   },
   locationCount: {
     fontSize: 14,
@@ -525,5 +612,59 @@ const styles = StyleSheet.create({
   searchItemTime: {
     fontSize: 12,
     color: '#999',
+  },
+  renameOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.4)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 24,
+  },
+  renameContainer: {
+    width: '100%',
+    backgroundColor: '#fff',
+    borderRadius: 12,
+    padding: 16,
+  },
+  renameTitle: {
+    fontSize: 18,
+    fontWeight: '600',
+    color: '#333',
+    marginBottom: 12,
+  },
+  renameInput: {
+    borderWidth: 1,
+    borderColor: '#e0e0e0',
+    borderRadius: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    fontSize: 16,
+    color: '#333',
+    marginBottom: 12,
+    backgroundColor: '#fafafa',
+  },
+  renameActions: {
+    flexDirection: 'row',
+    justifyContent: 'flex-end',
+    gap: 12,
+  },
+  renameCancel: {
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+  },
+  renameCancelText: {
+    color: '#007AFF',
+    fontSize: 16,
+  },
+  renameConfirm: {
+    backgroundColor: '#007AFF',
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    borderRadius: 8,
+  },
+  renameConfirmText: {
+    color: '#fff',
+    fontSize: 16,
+    fontWeight: '600',
   },
 });

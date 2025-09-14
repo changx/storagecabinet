@@ -216,6 +216,69 @@ export class StorageManager {
     }
   }
 
+  async moveItem(
+    fromSpaceId: string,
+    fromLocationId: string,
+    itemId: string,
+    toSpaceId: string,
+    toLocationId: string
+  ): Promise<void> {
+    try {
+      const spaces = await this.getStorageSpaces();
+      const fromSpace = spaces.find(s => s.id === fromSpaceId);
+      const toSpace = spaces.find(s => s.id === toSpaceId);
+
+      if (!fromSpace || !toSpace) {
+        throw new Error('找不到源或目标储物空间');
+      }
+
+      const fromLocation = fromSpace.locations.find(l => l.id === fromLocationId);
+      const toLocation = toSpace.locations.find(l => l.id === toLocationId);
+
+      if (!fromLocation || !toLocation) {
+        throw new Error('找不到源或目标储物位置');
+      }
+
+      const itemIndex = fromLocation.items.findIndex(i => i.id === itemId);
+      if (itemIndex < 0) {
+        throw new Error('找不到要移动的物品');
+      }
+
+      const item = fromLocation.items[itemIndex];
+      
+      // 如果移动到不同的储物空间，需要移动文件
+      if (fromSpaceId !== toSpaceId && item.photoPath) {
+        const oldPath = item.photoPath;
+        const fileName = oldPath.split('/').pop() || `item_${itemId}.jpg`;
+        const newPath = await this.saveImageToLocal(oldPath, `${toSpaceId}_${fileName}`);
+        
+        // 更新物品的图片路径
+        item.photoPath = newPath;
+        
+        // 删除旧文件
+        await this.deleteImageFile(oldPath);
+      }
+
+      // 更新物品的修改时间
+      item.updatedAt = new Date().toISOString();
+
+      // 从源位置移除物品
+      fromLocation.items.splice(itemIndex, 1);
+
+      // 添加到目标位置
+      toLocation.items.push(item);
+
+      // 保存两个储物空间的数据
+      await this.saveStorageSpace(fromSpace);
+      if (fromSpaceId !== toSpaceId) {
+        await this.saveStorageSpace(toSpace);
+      }
+    } catch (error) {
+      console.error('Error moving item:', error);
+      throw error;
+    }
+  }
+
   async searchItems(query: string): Promise<SearchResult[]> {
     try {
       if (!query || query.trim().length === 0) {
