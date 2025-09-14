@@ -6,6 +6,7 @@ import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import StorageListScreen from '../screens/StorageListScreen';
 import AddStorageSpaceScreen from '../screens/AddStorageSpaceScreen';
 import StorageDetailScreen from '../screens/StorageDetailScreen';
+import PhotoFullscreenScreen from '../screens/PhotoFullscreenScreen';
 import LocationDetailScreen from '../screens/LocationDetailScreen';
 import EditItemScreen from '../screens/EditItemScreen';
 import { RootStackParamList } from '../types/navigation';
@@ -33,6 +34,10 @@ export default function AppNavigator() {
           <Stack.Screen 
             name="StorageDetail" 
             component={StorageDetailScreen} 
+          />
+          <Stack.Screen 
+            name="PhotoFullscreen" 
+            component={PhotoFullscreenScreen} 
           />
           <Stack.Screen 
             name="LocationDetail" 

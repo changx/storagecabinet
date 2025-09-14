@@ -8,6 +8,11 @@ export type RootStackParamList = {
   StorageDetail: {
     space: StorageSpace;
   };
+  PhotoFullscreen: {
+    photoPath: string;
+    title: string;
+    space: StorageSpace;
+  };
   LocationDetail: {
     spaceId: string;
     locationId: string;

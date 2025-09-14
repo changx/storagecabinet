@@ -1,27 +1,15 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useCallback } from 'react';
 import {
   View,
   Text,
   StyleSheet,
   TouchableOpacity,
   Dimensions,
-  Alert,
   Image,
+  SectionList,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { 
-  GestureHandlerRootView, 
-  GestureDetector, 
-  Gesture 
-} from 'react-native-gesture-handler';
-import Animated, { 
-  useSharedValue, 
-  useAnimatedStyle, 
-  withSequence, 
-  withTiming,
-  runOnJS
-} from 'react-native-reanimated';
-import * as Haptics from 'expo-haptics';
+import { useFocusEffect } from '@react-navigation/native';
 import { StorageSpace, StorageLocation } from '../types';
 import { StorageDetailScreenNavigationProp, StorageDetailScreenRouteProp } from '../types/navigation';
 import { StorageManager } from '../utils/storage';
@@ -33,301 +21,156 @@ interface Props {
   route: StorageDetailScreenRouteProp;
 }
 
-interface LocationMarker {
-  id: string;
-  x: number;
-  y: number;
-  itemCount: number;
-}
-
-interface SelectionArea {
-  startX: number;
-  startY: number;
-  width: number;
-  height: number;
-}
-
 export default function StorageDetailScreen({ navigation, route }: Props) {
-  const { space } = route.params;
-  
-  // 状态管理
-  const [isEditMode, setIsEditMode] = useState(false);
-  const [imageLayout, setImageLayout] = useState({ width: 0, height: 0, x: 0, y: 0 });
-  const [selectedArea, setSelectedArea] = useState<SelectionArea | null>(null);
-  const [isSelecting, setIsSelecting] = useState(false);
-  const [markers, setMarkers] = useState<LocationMarker[]>(
-    space.locations.map(loc => ({
-      id: loc.id,
-      x: loc.x,
-      y: loc.y,
-      itemCount: loc.items.length,
-    }))
-  );
+  const { space: initialSpace } = route.params;
+  const [currentSpace, setCurrentSpace] = useState<StorageSpace>(initialSpace);
 
-  // 动画值
-  const buttonScale = useSharedValue(1);
-
-  const handleImageLayout = (event: any) => {
-    const { x, y, width, height } = event.nativeEvent.layout;
-    setImageLayout({ x, y, width, height });
-  };
-
-  // 模式切换
-  const toggleEditMode = () => {
-    buttonScale.value = withSequence(
-      withTiming(0.95, { duration: 100 }),
-      withTiming(1, { duration: 100 })
-    );
-    
-    setIsEditMode(!isEditMode);
-    setSelectedArea(null);
-    setIsSelecting(false);
-    
-    // 触觉反馈
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-  };
-
-  // 创建新储物位置
-  const handleCreateLocation = async (area: SelectionArea) => {
+  // 刷新储物空间数据
+  const refreshSpaceData = useCallback(async () => {
     try {
       const storageManager = StorageManager.getInstance();
-      const locationId = storageManager.generateId();
-      
-      // 计算相对坐标（百分比）
-      const relativeX = (area.startX + area.width / 2) / imageLayout.width;
-      const relativeY = (area.startY + area.height / 2) / imageLayout.height;
-      
-      const newLocation: StorageLocation = {
-        id: locationId,
-        x: relativeX,
-        y: relativeY,
-        items: [],
-      };
-
-      await storageManager.addLocationToSpace(space.id, newLocation);
-      
-      const newMarker: LocationMarker = {
-        id: locationId,
-        x: relativeX,
-        y: relativeY,
-        itemCount: 0,
-      };
-      
-      setMarkers(prev => [...prev, newMarker]);
-      
-      // 触觉反馈
-      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-    } catch (error) {
-      console.error('Error adding location:', error);
-      Alert.alert('错误', '添加位置失败');
-    }
-  };
-
-  // 手势处理
-  const panGesture = Gesture.Pan()
-    .enabled(isEditMode)
-    .onStart((event) => {
-      if (!isEditMode || !imageLayout.width) return;
-      
-      runOnJS(setIsSelecting)(true);
-      runOnJS(setSelectedArea)({
-        startX: event.x - imageLayout.x,
-        startY: event.y - imageLayout.y,
-        width: 0,
-        height: 0
-      });
-    })
-    .onUpdate((event) => {
-      if (!isEditMode || !isSelecting || !selectedArea) return;
-      
-      const currentX = event.x - imageLayout.x;
-      const currentY = event.y - imageLayout.y;
-      
-      runOnJS(setSelectedArea)({
-        startX: selectedArea.startX,
-        startY: selectedArea.startY,
-        width: currentX - selectedArea.startX,
-        height: currentY - selectedArea.startY
-      });
-    })
-    .onEnd(() => {
-      if (!isEditMode || !selectedArea) return;
-      
-      // 检查选择区域是否有效（最小尺寸）
-      const minSize = 20;
-      if (Math.abs(selectedArea.width) > minSize && Math.abs(selectedArea.height) > minSize) {
-        runOnJS(handleCreateLocation)(selectedArea);
+      const updatedSpace = await storageManager.getStorageSpace(initialSpace.id);
+      if (updatedSpace) {
+        setCurrentSpace(updatedSpace);
       }
-      
-      runOnJS(setSelectedArea)(null);
-      runOnJS(setIsSelecting)(false);
-    });
-
-  const handleMarkerPress = (marker: LocationMarker) => {
-    if (isEditMode) {
-      // 编辑模式下点击标记显示删除确认对话框
-      handleDeleteLocation(marker);
-      return;
+    } catch (error) {
+      console.error('Error refreshing space data:', error);
     }
-    
-    navigation.navigate('LocationDetail', {
-      spaceId: space.id,
-      locationId: marker.id,
-      spaceTitle: space.title,
-    });
+  }, [initialSpace.id]);
+
+  // 页面获得焦点时刷新数据
+  useFocusEffect(
+    useCallback(() => {
+      refreshSpaceData();
+    }, [refreshSpaceData])
+  );
+
+  // 准备SectionList数据
+  const prepareSectionData = () => {
+    return currentSpace.locations.map(location => ({
+      title: `储物位置 ${location.id.slice(-4)}`,
+      data: location.items.length > 0 ? location.items : [{ id: 'empty', name: '暂无物品', isEmpty: true }],
+      locationId: location.id,
+    }));
   };
 
-  // 删除储物位置
-  const handleDeleteLocation = (marker: LocationMarker) => {
-    Alert.alert(
-      '删除储物位置',
-      `确定要删除这个储物位置吗？\n\n删除后将无法恢复，位置中的所有物品信息都将丢失。`,
-      [
-        {
-          text: '取消',
-          style: 'cancel',
-        },
-        {
-          text: '删除',
-          style: 'destructive',
-          onPress: async () => {
-            try {
-              const storageManager = StorageManager.getInstance();
-              await storageManager.deleteLocationFromSpace(space.id, marker.id);
-              
-              // 更新本地标记状态
-              setMarkers(prev => prev.filter(m => m.id !== marker.id));
-              
-              // 触觉反馈
-              Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-              
-              Alert.alert('成功', '储物位置已删除');
-            } catch (error) {
-              console.error('Error deleting location:', error);
-              Alert.alert('错误', '删除储物位置失败，请稍后重试');
-            }
-          },
-        },
-      ]
-    );
-  };
+  // 渲染section header
+  const renderSectionHeader = ({ section }: any) => (
+    <View style={styles.sectionHeader}>
+      <Text style={styles.sectionTitle}>{section.title}</Text>
+      <Text style={styles.itemCount}>{section.data.filter((item: any) => !item.isEmpty).length} 件物品</Text>
+    </View>
+  );
 
-  // 位置标记组件
-  const renderMarker = (marker: LocationMarker) => {
-    const markerX = marker.x * imageLayout.width;
-    const markerY = marker.y * imageLayout.height;
+  // 渲染列表项
+  const renderItem = ({ item, section }: any) => {
+    if (item.isEmpty) {
+      return (
+        <TouchableOpacity 
+          style={styles.emptyItem}
+          onPress={() => navigation.navigate('LocationDetail', {
+            spaceId: currentSpace.id,
+            locationId: section.locationId,
+            spaceTitle: currentSpace.title,
+          })}
+        >
+          <Text style={styles.emptyItemText}>+ 添加物品</Text>
+        </TouchableOpacity>
+      );
+    }
 
     return (
-      <TouchableOpacity
-        key={marker.id}
-        style={[
-          styles.marker,
-          {
-            left: markerX + imageLayout.x - 20,
-            top: markerY + imageLayout.y - 20,
-            opacity: isEditMode ? 0.8 : 1.0,
-          },
-        ]}
-        onPress={() => handleMarkerPress(marker)}
-        activeOpacity={0.7}
+      <TouchableOpacity 
+        style={styles.listItem}
+        onPress={() => navigation.navigate('LocationDetail', {
+          spaceId: currentSpace.id,
+          locationId: section.locationId,
+          spaceTitle: currentSpace.title,
+        })}
       >
-        <View style={styles.markerCircle}>
-          <Text style={styles.markerText}>{marker.itemCount}</Text>
+        <View style={styles.itemImageContainer}>
+          {item.photoPath ? (
+            <Image source={{ uri: item.photoPath }} style={styles.itemImage} />
+          ) : (
+            <View style={styles.itemImagePlaceholder}>
+              <Text style={styles.placeholderText}>📦</Text>
+            </View>
+          )}
         </View>
+        <View style={styles.itemInfo}>
+          <Text style={styles.itemName}>{item.name}</Text>
+          {item.description && (
+            <Text style={styles.itemDescription} numberOfLines={2}>{item.description}</Text>
+          )}
+        </View>
+        <Text style={styles.arrow}>›</Text>
       </TouchableOpacity>
     );
   };
 
-  // 选择框组件
-  const renderSelectionOverlay = () => {
-    if (!selectedArea || !isSelecting) return null;
-
-    const left = Math.min(selectedArea.startX, selectedArea.startX + selectedArea.width);
-    const top = Math.min(selectedArea.startY, selectedArea.startY + selectedArea.height);
-    const width = Math.abs(selectedArea.width);
-    const height = Math.abs(selectedArea.height);
-
-    return (
-      <View
-        style={[
-          styles.selectionBox,
-          {
-            left: left + imageLayout.x,
-            top: top + imageLayout.y,
-            width: width,
-            height: height,
-          }
-        ]}
-      />
-    );
-  };
-
-  // 动画按钮样式
-  const animatedButtonStyle = useAnimatedStyle(() => {
-    return {
-      transform: [{ scale: buttonScale.value }],
-    };
-  });
-
   return (
-    <GestureHandlerRootView style={styles.container}>
-      <SafeAreaView style={styles.container}>
-        {/* 头部导航 */}
-        <View style={styles.header}>
+    <SafeAreaView style={styles.container}>
+      {/* 头部导航 */}
+      <View style={styles.header}>
+        <TouchableOpacity 
+          style={styles.backButton}
+          onPress={() => navigation.goBack()}
+        >
+          <Text style={styles.backButtonText}>←</Text>
+        </TouchableOpacity>
+        <Text style={styles.headerTitle}>{currentSpace.title}</Text>
+        <TouchableOpacity 
+          style={styles.editButton}
+          onPress={() => navigation.navigate('PhotoFullscreen', { photoPath: currentSpace.photoPath, title: currentSpace.title, space: currentSpace })}
+        >
+          <Text style={styles.editButtonText}>编辑</Text>
+        </TouchableOpacity>
+      </View>
+
+      {/* 主要内容区 */}
+      <View style={styles.content}>
+        {/* 上半部分：照片 */}
+        <View style={styles.photoSection}>
           <TouchableOpacity 
-            style={styles.backButton}
-            onPress={() => navigation.goBack()}
+            style={styles.photoContainer}
+            onPress={() => navigation.navigate('PhotoFullscreen', { photoPath: currentSpace.photoPath, title: currentSpace.title, space: currentSpace })}
+            activeOpacity={0.9}
           >
-            <Text style={styles.backButtonText}>←</Text>
+            <Image
+              source={{ uri: currentSpace.photoPath }}
+              style={styles.photoImage}
+              resizeMode="cover"
+            />
           </TouchableOpacity>
-          <Text style={styles.headerTitle}>{space.title}</Text>
-          <Animated.View style={animatedButtonStyle}>
-            <TouchableOpacity 
-              style={styles.editButton}
-              onPress={toggleEditMode}
-            >
-              <Text style={styles.editButtonText}>
-                {isEditMode ? '完成' : '编辑'}
-              </Text>
-            </TouchableOpacity>
-          </Animated.View>
         </View>
-
-        {/* 主要内容区 */}
-        <View style={styles.content}>
-          <GestureDetector gesture={panGesture}>
-            <View style={styles.imageContainer}>
-              <Image
-                source={{ uri: space.photoPath }}
-                style={styles.fullImage}
-                resizeMode="contain"
-                onLayout={handleImageLayout}
-              />
-              
-              {/* 位置标记 */}
-              {imageLayout.width > 0 && markers.map(renderMarker)}
-              
-              {/* 选择框覆盖层 */}
-              {renderSelectionOverlay()}
+        
+        {/* 下半部分：储物位置和物品列表 */}
+        <View style={styles.listSection}>
+          {prepareSectionData().length > 0 ? (
+            <SectionList
+              sections={prepareSectionData()}
+              keyExtractor={(item) => item.id}
+              renderItem={renderItem}
+              renderSectionHeader={renderSectionHeader}
+              showsVerticalScrollIndicator={false}
+              contentContainerStyle={styles.listContainer}
+            />
+          ) : (
+            <View style={styles.emptyContainer}>
+              <Text style={styles.emptyText}>暂无储物位置</Text>
+              <Text style={styles.emptySubText}>点击右上角"编辑"在照片上圈定储物区域</Text>
             </View>
-          </GestureDetector>
+          )}
         </View>
-
-        {/* 编辑模式提示 */}
-        {isEditMode && (
-          <View style={styles.editHint}>
-            <Text style={styles.editHintText}>💡 滑动选择新的储物区域，点击已有标记可删除位置</Text>
-          </View>
-        )}
-      </SafeAreaView>
-    </GestureHandlerRootView>
+      </View>
+    </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#000',
+    backgroundColor: '#f5f5f5',
   },
   header: {
     flexDirection: 'row',
@@ -335,21 +178,23 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     paddingHorizontal: 20,
     paddingVertical: 15,
-    backgroundColor: 'rgba(0, 0, 0, 0.9)',
+    backgroundColor: 'white',
+    borderBottomWidth: 1,
+    borderBottomColor: '#e0e0e0',
   },
   backButton: {
     padding: 8,
     minWidth: 44,
   },
   backButtonText: {
-    color: 'white',
+    color: '#007AFF',
     fontSize: 24,
     fontWeight: '300',
   },
   headerTitle: {
     fontSize: 18,
     fontWeight: '600',
-    color: 'white',
+    color: '#333',
     textAlign: 'center',
     flex: 1,
   },
@@ -369,61 +214,126 @@ const styles = StyleSheet.create({
   content: {
     flex: 1,
   },
-  imageContainer: {
-    flex: 1,
-    position: 'relative',
-    justifyContent: 'center',
-    alignItems: 'center',
+  photoSection: {
+    height: height * 0.3,
+    backgroundColor: 'white',
+    marginBottom: 10,
   },
-  fullImage: {
+  photoContainer: {
+    flex: 1,
+    margin: 15,
+    borderRadius: 12,
+    overflow: 'hidden',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 8,
+    elevation: 3,
+  },
+  photoImage: {
     width: '100%',
     height: '100%',
   },
-  marker: {
-    position: 'absolute',
-    width: 40,
-    height: 40,
-    justifyContent: 'center',
-    alignItems: 'center',
+  listSection: {
+    flex: 1,
+    backgroundColor: 'white',
   },
-  markerCircle: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    backgroundColor: '#FF3B30',
-    justifyContent: 'center',
-    alignItems: 'center',
-    borderWidth: 3,
-    borderColor: 'white',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.25,
-    shadowRadius: 4,
-    elevation: 5,
+  listContainer: {
+    paddingTop: 15,
   },
-  markerText: {
-    color: 'white',
+  sectionHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingHorizontal: 20,
+    paddingVertical: 12,
+    backgroundColor: '#f8f9fa',
+    borderTopWidth: 1,
+    borderTopColor: '#e9ecef',
+  },
+  sectionTitle: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#333',
+  },
+  itemCount: {
     fontSize: 14,
-    fontWeight: 'bold',
+    color: '#666',
   },
-  selectionBox: {
-    position: 'absolute',
-    borderWidth: 2,
-    borderColor: '#007AFF',
-    backgroundColor: 'rgba(0, 122, 255, 0.1)',
-    borderStyle: 'dashed',
-  },
-  editHint: {
-    backgroundColor: 'rgba(0, 0, 0, 0.9)',
+  listItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
     paddingHorizontal: 20,
     paddingVertical: 15,
-    borderTopWidth: 1,
-    borderTopColor: 'rgba(255, 255, 255, 0.1)',
+    borderBottomWidth: 1,
+    borderBottomColor: '#f0f0f0',
   },
-  editHintText: {
-    color: 'white',
+  itemImageContainer: {
+    width: 50,
+    height: 50,
+    marginRight: 15,
+  },
+  itemImage: {
+    width: 50,
+    height: 50,
+    borderRadius: 8,
+  },
+  itemImagePlaceholder: {
+    width: 50,
+    height: 50,
+    borderRadius: 8,
+    backgroundColor: '#f0f0f0',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  placeholderText: {
+    fontSize: 20,
+  },
+  itemInfo: {
+    flex: 1,
+  },
+  itemName: {
     fontSize: 16,
+    fontWeight: '500',
+    color: '#333',
+    marginBottom: 4,
+  },
+  itemDescription: {
+    fontSize: 14,
+    color: '#666',
+    lineHeight: 20,
+  },
+  arrow: {
+    fontSize: 18,
+    color: '#ccc',
+  },
+  emptyItem: {
+    paddingHorizontal: 20,
+    paddingVertical: 20,
+    alignItems: 'center',
+    borderBottomWidth: 1,
+    borderBottomColor: '#f0f0f0',
+  },
+  emptyItemText: {
+    fontSize: 16,
+    color: '#007AFF',
+    fontWeight: '500',
+  },
+  emptyContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingHorizontal: 40,
+  },
+  emptyText: {
+    fontSize: 18,
+    color: '#666',
+    marginBottom: 8,
+  },
+  emptySubText: {
+    fontSize: 14,
+    color: '#999',
     textAlign: 'center',
-    opacity: 0.8,
+    lineHeight: 20,
   },
 });

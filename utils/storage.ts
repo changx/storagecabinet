@@ -24,6 +24,16 @@ export class StorageManager {
     }
   }
 
+  async getStorageSpace(spaceId: string): Promise<StorageSpace | null> {
+    try {
+      const spaces = await this.getStorageSpaces();
+      return spaces.find(space => space.id === spaceId) || null;
+    } catch (error) {
+      console.error('Error getting storage space:', error);
+      return null;
+    }
+  }
+
   async saveStorageSpace(space: StorageSpace): Promise<void> {
     try {
       const spaces = await this.getStorageSpaces();
