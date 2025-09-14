@@ -10,7 +10,7 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useFocusEffect } from '@react-navigation/native';
-import { StorageSpace, StorageLocation } from '../types';
+import { StorageSpace, StorageLocation, StorageItem } from '../types';
 import { StorageDetailScreenNavigationProp, StorageDetailScreenRouteProp } from '../types/navigation';
 import { StorageManager } from '../utils/storage';
 
@@ -21,9 +21,19 @@ interface Props {
   route: StorageDetailScreenRouteProp;
 }
 
+interface EmptyItem {
+  id: string;
+  name: string;
+  isEmpty: true;
+}
+
+type ListItem = StorageItem | EmptyItem;
+
 export default function StorageDetailScreen({ navigation, route }: Props) {
   const { space: initialSpace } = route.params;
   const [currentSpace, setCurrentSpace] = useState<StorageSpace>(initialSpace);
+  const [imageLayout, setImageLayout] = useState<{width: number, height: number, x: number, y: number}>({ width: 0, height: 0, x: 0, y: 0 });
+  const [imageNaturalSize, setImageNaturalSize] = useState<{width: number, height: number}>({ width: 0, height: 0 });
 
   // 刷新储物空间数据
   const refreshSpaceData = useCallback(async () => {
@@ -45,11 +55,97 @@ export default function StorageDetailScreen({ navigation, route }: Props) {
     }, [refreshSpaceData])
   );
 
+  // 处理图片布局变化
+  const handleImageLayout = (event: any) => {
+    const { x, y, width, height } = event.nativeEvent.layout;
+    setImageLayout({ x, y, width, height });
+  };
+
+  // 获取图片自然尺寸
+  const handleImageLoad = (event: any) => {
+    const { width: naturalWidth, height: naturalHeight } = event.nativeEvent.source;
+    setImageNaturalSize({ width: naturalWidth, height: naturalHeight });
+  };
+
+  // 计算cover模式下图片的实际显示区域
+  const getImageDisplayArea = () => {
+    if (!imageLayout.width || !imageLayout.height || !imageNaturalSize.width || !imageNaturalSize.height) {
+      return null;
+    }
+
+    const containerRatio = imageLayout.width / imageLayout.height;
+    const imageRatio = imageNaturalSize.width / imageNaturalSize.height;
+
+    let displayWidth: number;
+    let displayHeight: number;
+    let offsetX: number;
+    let offsetY: number;
+
+    if (containerRatio > imageRatio) {
+      // 容器更宽，图片按高度缩放，左右裁剪
+      displayHeight = imageLayout.height;
+      displayWidth = displayHeight * imageRatio;
+      offsetX = (imageLayout.width - displayWidth) / 2;
+      offsetY = 0;
+    } else {
+      // 容器更高，图片按宽度缩放，上下裁剪
+      displayWidth = imageLayout.width;
+      displayHeight = displayWidth / imageRatio;
+      offsetX = 0;
+      offsetY = (imageLayout.height - displayHeight) / 2;
+    }
+
+    return {
+      width: displayWidth,
+      height: displayHeight,
+      offsetX: offsetX + imageLayout.x,
+      offsetY: offsetY + imageLayout.y,
+    };
+  };
+
+  // 渲染储物位置标记
+  const renderLocationMarkers = () => {
+    const displayArea = getImageDisplayArea();
+    if (!displayArea) return null;
+
+    return currentSpace.locations.map((location, index) => {
+      // 将百分比坐标转换为实际像素位置
+      const markerX = displayArea.offsetX + (location.x * displayArea.width);
+      const markerY = displayArea.offsetY + (location.y * displayArea.height);
+
+      return (
+        <TouchableOpacity
+          key={location.id}
+          style={[
+            styles.locationMarker,
+            {
+              left: markerX - 20, // 标记宽度的一半
+              top: markerY - 20,  // 标记高度的一半
+            },
+          ]}
+          onPress={() => navigation.navigate('LocationDetail', {
+            spaceId: currentSpace.id,
+            locationId: location.id,
+            spaceTitle: currentSpace.title,
+          })}
+          activeOpacity={0.7}
+        >
+          <View style={styles.markerCircle}>
+            <Text style={styles.markerText}>{location.items.length}</Text>
+          </View>
+          <View style={styles.markerLabel}>
+            <Text style={styles.markerLabelText}>储物位置 {index + 1}</Text>
+          </View>
+        </TouchableOpacity>
+      );
+    });
+  };
+
   // 准备SectionList数据
   const prepareSectionData = () => {
-    return currentSpace.locations.map(location => ({
-      title: `储物位置 ${location.id.slice(-4)}`,
-      data: location.items.length > 0 ? location.items : [{ id: 'empty', name: '暂无物品', isEmpty: true }],
+    return currentSpace.locations.map((location, index) => ({
+      title: `储物位置 ${index + 1}`,
+      data: location.items.length > 0 ? location.items : [{ id: 'empty', name: '暂无物品', isEmpty: true } as EmptyItem],
       locationId: location.id,
     }));
   };
@@ -58,13 +154,13 @@ export default function StorageDetailScreen({ navigation, route }: Props) {
   const renderSectionHeader = ({ section }: any) => (
     <View style={styles.sectionHeader}>
       <Text style={styles.sectionTitle}>{section.title}</Text>
-      <Text style={styles.itemCount}>{section.data.filter((item: any) => !item.isEmpty).length} 件物品</Text>
+      <Text style={styles.itemCount}>{section.data.filter((item: any) => !('isEmpty' in item)).length} 件物品</Text>
     </View>
   );
 
   // 渲染列表项
   const renderItem = ({ item, section }: any) => {
-    if (item.isEmpty) {
+    if ('isEmpty' in item && item.isEmpty) {
       return (
         <TouchableOpacity 
           style={styles.emptyItem}
@@ -89,7 +185,7 @@ export default function StorageDetailScreen({ navigation, route }: Props) {
         })}
       >
         <View style={styles.itemImageContainer}>
-          {item.photoPath ? (
+          {('photoPath' in item && item.photoPath) ? (
             <Image source={{ uri: item.photoPath }} style={styles.itemImage} />
           ) : (
             <View style={styles.itemImagePlaceholder}>
@@ -99,7 +195,7 @@ export default function StorageDetailScreen({ navigation, route }: Props) {
         </View>
         <View style={styles.itemInfo}>
           <Text style={styles.itemName}>{item.name}</Text>
-          {item.description && (
+          {('description' in item && item.description) && (
             <Text style={styles.itemDescription} numberOfLines={2}>{item.description}</Text>
           )}
         </View>
@@ -140,14 +236,18 @@ export default function StorageDetailScreen({ navigation, route }: Props) {
               source={{ uri: currentSpace.photoPath }}
               style={styles.photoImage}
               resizeMode="cover"
+              onLayout={handleImageLayout}
+              onLoad={handleImageLoad}
             />
+            {/* 储物位置标记覆盖层 */}
+            {renderLocationMarkers()}
           </TouchableOpacity>
         </View>
         
         {/* 下半部分：储物位置和物品列表 */}
         <View style={styles.listSection}>
           {prepareSectionData().length > 0 ? (
-            <SectionList
+            <SectionList<ListItem>
               sections={prepareSectionData()}
               keyExtractor={(item) => item.id}
               renderItem={renderItem}
@@ -222,17 +322,17 @@ const styles = StyleSheet.create({
   photoContainer: {
     flex: 1,
     margin: 15,
-    borderRadius: 12,
-    overflow: 'hidden',
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.1,
     shadowRadius: 8,
     elevation: 3,
+    position: 'relative',
   },
   photoImage: {
     width: '100%',
     height: '100%',
+    borderRadius: 12,
   },
   listSection: {
     flex: 1,
@@ -335,5 +435,49 @@ const styles = StyleSheet.create({
     color: '#999',
     textAlign: 'center',
     lineHeight: 20,
+  },
+  locationMarker: {
+    position: 'absolute',
+    width: 40,
+    height: 40,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  markerCircle: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: '#FF3B30',
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderWidth: 3,
+    borderColor: 'white',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.25,
+    shadowRadius: 4,
+    elevation: 5,
+  },
+  markerText: {
+    color: 'white',
+    fontSize: 12,
+    fontWeight: 'bold',
+  },
+  markerLabel: {
+    position: 'absolute',
+    top: 45,
+    left: -30,
+    width: 100,
+    backgroundColor: 'rgba(0, 0, 0, 0.8)',
+    paddingVertical: 4,
+    paddingHorizontal: 8,
+    borderRadius: 6,
+    alignItems: 'center',
+  },
+  markerLabelText: {
+    color: 'white',
+    fontSize: 11,
+    fontWeight: '500',
+    textAlign: 'center',
   },
 });
