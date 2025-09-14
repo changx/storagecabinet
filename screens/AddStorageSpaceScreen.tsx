@@ -34,8 +34,7 @@ export default function AddStorageSpaceScreen({ navigation }: Props) {
 
     const result = await ImagePicker.launchImageLibraryAsync({
       mediaTypes: 'images',
-      allowsEditing: true,
-      aspect: [16, 9],
+      allowsEditing: false,
       quality: 0.8,
     });
 
@@ -58,8 +57,7 @@ export default function AddStorageSpaceScreen({ navigation }: Props) {
       console.log('启动相机...');
       const result = await ImagePicker.launchCameraAsync({
         mediaTypes: 'images',
-        allowsEditing: true,
-        aspect: [16, 9],
+        allowsEditing: false,
         quality: 0.8,
       });
 

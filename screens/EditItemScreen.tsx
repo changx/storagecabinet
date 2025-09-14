@@ -41,8 +41,7 @@ export default function EditItemScreen({ navigation, route }: Props) {
 
     const result = await ImagePicker.launchImageLibraryAsync({
       mediaTypes: 'images',
-      allowsEditing: true,
-      aspect: [4, 3],
+      allowsEditing: false,
       quality: 0.8,
     });
 
@@ -65,8 +64,7 @@ export default function EditItemScreen({ navigation, route }: Props) {
       console.log('启动相机...');
       const result = await ImagePicker.launchCameraAsync({
         mediaTypes: 'images',
-        allowsEditing: true,
-        aspect: [4, 3],
+        allowsEditing: false,
         quality: 0.8,
       });
 

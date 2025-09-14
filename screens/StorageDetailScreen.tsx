@@ -34,6 +34,7 @@ export default function StorageDetailScreen({ navigation, route }: Props) {
   const [currentSpace, setCurrentSpace] = useState<StorageSpace>(initialSpace);
   const [imageLayout, setImageLayout] = useState<{width: number, height: number, x: number, y: number}>({ width: 0, height: 0, x: 0, y: 0 });
   const [imageNaturalSize, setImageNaturalSize] = useState<{width: number, height: number}>({ width: 0, height: 0 });
+  const [calculatedImageSize, setCalculatedImageSize] = useState<{width: number, height: number}>({ width: 0, height: 0 });
 
   // 刷新储物空间数据
   const refreshSpaceData = useCallback(async () => {
@@ -58,60 +59,68 @@ export default function StorageDetailScreen({ navigation, route }: Props) {
   // 处理图片布局变化
   const handleImageLayout = (event: any) => {
     const { x, y, width, height } = event.nativeEvent.layout;
+    console.log('Image layout:', { x, y, width, height });
     setImageLayout({ x, y, width, height });
   };
 
-  // 获取图片自然尺寸
+  // 获取图片自然尺寸并计算合适的显示尺寸
   const handleImageLoad = (event: any) => {
     const { width: naturalWidth, height: naturalHeight } = event.nativeEvent.source;
+    console.log('Image natural size:', { width: naturalWidth, height: naturalHeight });
     setImageNaturalSize({ width: naturalWidth, height: naturalHeight });
+
+    // 计算合适的显示尺寸
+    const containerWidth = width - 30; // 左右margin各15px
+    const maxHeight = height * 0.5; // 最大高度为屏幕高度的50%
+    
+    const imageRatio = naturalWidth / naturalHeight;
+    
+    // 按容器宽度缩放
+    let displayWidth = containerWidth;
+    let displayHeight = containerWidth / imageRatio;
+    
+    // 如果高度超过最大值，按最大高度缩放
+    if (displayHeight > maxHeight) {
+      displayHeight = maxHeight;
+      displayWidth = maxHeight * imageRatio;
+    }
+    
+    console.log('Calculated image size:', { width: displayWidth, height: displayHeight });
+    setCalculatedImageSize({ width: displayWidth, height: displayHeight });
   };
 
-  // 计算cover模式下图片的实际显示区域
-  const getImageDisplayArea = () => {
-    if (!imageLayout.width || !imageLayout.height || !imageNaturalSize.width || !imageNaturalSize.height) {
+  // 获取图片显示信息
+  const getImageDisplayInfo = () => {
+    if (!calculatedImageSize.width || !calculatedImageSize.height || !imageLayout.width || !imageLayout.height) {
       return null;
     }
 
-    const containerRatio = imageLayout.width / imageLayout.height;
-    const imageRatio = imageNaturalSize.width / imageNaturalSize.height;
-
-    let displayWidth: number;
-    let displayHeight: number;
-    let offsetX: number;
-    let offsetY: number;
-
-    if (containerRatio > imageRatio) {
-      // 容器更宽，图片按高度缩放，左右裁剪
-      displayHeight = imageLayout.height;
-      displayWidth = displayHeight * imageRatio;
-      offsetX = (imageLayout.width - displayWidth) / 2;
-      offsetY = 0;
-    } else {
-      // 容器更高，图片按宽度缩放，上下裁剪
-      displayWidth = imageLayout.width;
-      displayHeight = displayWidth / imageRatio;
-      offsetX = 0;
-      offsetY = (imageLayout.height - displayHeight) / 2;
-    }
+    // 图片在容器中居中显示时的偏移量
+    const offsetX = imageLayout.x + (imageLayout.width - calculatedImageSize.width) / 2;
+    const offsetY = imageLayout.y + (imageLayout.height - calculatedImageSize.height) / 2;
 
     return {
-      width: displayWidth,
-      height: displayHeight,
-      offsetX: offsetX + imageLayout.x,
-      offsetY: offsetY + imageLayout.y,
+      displayWidth: calculatedImageSize.width,
+      displayHeight: calculatedImageSize.height,
+      offsetX,
+      offsetY,
     };
   };
 
   // 渲染储物位置标记
   const renderLocationMarkers = () => {
-    const displayArea = getImageDisplayArea();
-    if (!displayArea) return null;
+    if (!calculatedImageSize.width || !calculatedImageSize.height) return null;
 
     return currentSpace.locations.map((location, index) => {
       // 将百分比坐标转换为实际像素位置
-      const markerX = displayArea.offsetX + (location.x * displayArea.width);
-      const markerY = displayArea.offsetY + (location.y * displayArea.height);
+      const markerX = location.x * calculatedImageSize.width;
+      const markerY = location.y * calculatedImageSize.height;
+      
+      console.log(`Marker ${index + 1} position:`, {
+        locationPercent: { x: location.x, y: location.y },
+        imageSize: calculatedImageSize,
+        finalPosition: { x: markerX, y: markerY }
+      });
 
       return (
         <TouchableOpacity
@@ -228,13 +237,25 @@ export default function StorageDetailScreen({ navigation, route }: Props) {
         {/* 上半部分：照片 */}
         <View style={styles.photoSection}>
           <TouchableOpacity 
-            style={styles.photoContainer}
+            style={[
+              styles.photoContainer,
+              calculatedImageSize.width > 0 && calculatedImageSize.height > 0 && {
+                width: calculatedImageSize.width,
+                height: calculatedImageSize.height,
+              }
+            ]}
             onPress={() => navigation.navigate('PhotoFullscreen', { photoPath: currentSpace.photoPath, title: currentSpace.title, space: currentSpace })}
             activeOpacity={0.9}
           >
             <Image
               source={{ uri: currentSpace.photoPath }}
-              style={styles.photoImage}
+              style={[
+                styles.photoImage,
+                calculatedImageSize.width > 0 && calculatedImageSize.height > 0 && {
+                  width: calculatedImageSize.width,
+                  height: calculatedImageSize.height,
+                }
+              ]}
               resizeMode="cover"
               onLayout={handleImageLayout}
               onLoad={handleImageLoad}
@@ -315,12 +336,12 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   photoSection: {
-    height: height * 0.3,
     backgroundColor: 'white',
     marginBottom: 10,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   photoContainer: {
-    flex: 1,
     margin: 15,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 2 },
@@ -330,8 +351,6 @@ const styles = StyleSheet.create({
     position: 'relative',
   },
   photoImage: {
-    width: '100%',
-    height: '100%',
     borderRadius: 12,
   },
   listSection: {
